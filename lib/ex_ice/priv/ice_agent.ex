@@ -962,8 +962,14 @@ defmodule ExICE.Priv.ICEAgent do
             cand = %{cand | client: client}
             ice_agent = put_in(ice_agent.local_cands[cand.base.id], cand)
             # we can't use do_send here as it will try to create permission for the turn address
-            :ok = ice_agent.transport_module.send(cand.base.socket, dst, data)
-            ice_agent
+            case ice_agent.transport_module.send(cand.base.socket, dst, data) do
+              :ok ->
+                ice_agent
+
+              {:error, reason} ->
+                Logger.debug("TURN send failed (#{inspect(reason)}), closing candidate")
+                close_candidate(ice_agent, cand)
+            end
 
           {:error, _reason, client} ->
             Logger.debug("""
@@ -2274,8 +2280,8 @@ defmodule ExICE.Priv.ICEAgent do
         # TODO calculate correct prio and foundation
         local_cand = conn_check_local_cand
 
-        priority =
-          Candidate.priority!(ice_agent.local_preferences, local_cand.base.base_address, :prflx)
+        {local_preferences, priority} =
+          Candidate.priority(ice_agent.local_preferences, local_cand.base.base_address, :prflx)
 
         cand =
           Candidate.Prflx.new(
@@ -2292,7 +2298,8 @@ defmodule ExICE.Priv.ICEAgent do
 
         ice_agent = %__MODULE__{
           ice_agent
-          | local_cands: Map.put(ice_agent.local_cands, cand.base.id, cand)
+          | local_cands: Map.put(ice_agent.local_cands, cand.base.id, cand),
+            local_preferences: local_preferences
         }
 
         {cand, ice_agent}

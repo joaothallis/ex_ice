@@ -40,4 +40,24 @@ defmodule ExICE.Priv.CandidateTest do
     assert prio5 < prio2
     assert prio5 > prio3
   end
+
+  test "priority/3 with unknown base address generates new preference" do
+    # When a connectivity check succeeds through a TURN relay, the base_address
+    # is the relay's allocated IP (e.g. a Cloudflare TURN server), which won't be
+    # in local_preferences (only physical interface IPs are there).
+    # priority/3 must handle this gracefully instead of crashing.
+    local_preferences = %{{192, 168, 0, 1} => 12780, {172, 16, 0, 2} => 28272}
+    turn_relay_address = {104, 30, 147, 95}
+
+    {updated_preferences, priority} =
+      Candidate.priority(local_preferences, turn_relay_address, :prflx)
+
+    assert is_integer(priority)
+    assert priority > 0
+    assert Map.has_key?(updated_preferences, turn_relay_address)
+    assert map_size(updated_preferences) == 3
+    # original preferences are preserved
+    assert updated_preferences[{192, 168, 0, 1}] == 12780
+    assert updated_preferences[{172, 16, 0, 2}] == 28272
+  end
 end
